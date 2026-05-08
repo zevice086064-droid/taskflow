@@ -141,16 +141,24 @@ input,select,textarea{font:inherit;color:inherit}
 /* ===== Setup Wizard ===== */
 .setup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;display:none;align-items:center;justify-content:center}
 .setup-overlay.show{display:flex}
-.setup-dialog{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:32px;max-width:480px;width:90%;text-align:center}
-.setup-dialog h2{font-size:20px;margin-bottom:8px}
-.setup-dialog .step{font-size:13px;color:var(--text2);margin-bottom:24px}
+.setup-dialog{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:32px;max-width:500px;width:90%}
+.setup-dialog h2{font-size:20px;margin-bottom:8px;text-align:center}
+.setup-dialog .step{font-size:13px;color:var(--text2);margin-bottom:20px;text-align:center}
 .setup-dialog .step a{color:var(--accent)}
+.setup-tabs{display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+.setup-tab{flex:1;padding:10px;text-align:center;font-size:13px;cursor:pointer;background:var(--bg);color:var(--text2);transition:all var(--transition)}
+.setup-tab.active{background:var(--accent);color:#fff;font-weight:600}
+.setup-tab:hover:not(.active){background:var(--border)}
 .setup-dialog input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;background:var(--surface);margin-bottom:12px;outline:none}
 .setup-dialog input:focus{border-color:var(--accent)}
-.setup-dialog .setup-error{color:var(--danger);font-size:12px;margin-bottom:8px;min-height:18px}
+.setup-dialog .setup-error{color:var(--danger);font-size:12px;margin-bottom:8px;min-height:18px;text-align:center}
 .setup-dialog .setup-hint{font-size:11px;color:var(--text2);margin-bottom:16px;text-align:left;line-height:1.6}
+.setup-dialog .setup-success{color:var(--success);font-size:13px;margin-bottom:12px;text-align:center;font-weight:600}
+.setup-dialog .cloud-status{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--success-light);border-radius:var(--radius-sm);margin-bottom:12px;font-size:13px}
 .setup-dialog .btn{width:100%;justify-content:center;padding:10px}
-.setup-skip{font-size:12px;color:var(--text2);margin-top:12px;cursor:pointer;text-decoration:underline}
+.setup-dialog .btn-outline{background:transparent;border:2px solid var(--accent);color:var(--accent)}
+.setup-dialog .btn-outline:hover{background:var(--accent-light)}
+.setup-skip{font-size:12px;color:var(--text2);margin-top:12px;cursor:pointer;text-decoration:underline;text-align:center;display:block}
 
 /* ===== Context Menu ===== */
 .context-menu{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:200;min-width:180px;padding:4px;display:none}
@@ -346,7 +354,7 @@ input,select,textarea{font:inherit;color:inherit}
 <div class="setup-overlay" id="setupOverlay">
   <div class="setup-dialog">
     <h2>☁️ 设置云同步</h2>
-    <p class="step">通过 GitHub Gist 在电脑和手机之间实时同步任务数据</p>
+    <p class="step">选择一种同步方式，让电脑和手机数据保持一致</p>
     <div class="setup-hint">
       1. 前往 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a><br>
       2. 点击 "Generate new token" → "Generate new token (classic)"<br>
@@ -394,11 +402,15 @@ let clock24h = true;
 let flatTasks = [];
 let taskTree = [];
 let searchQuery = '';
+let syncMode = localStorage.getItem('tf_sync_mode') || ''; // 'gist' | 'cloudFile' | ''
 let syncToken = localStorage.getItem('tf_sync_token') || '';
 let syncGistId = localStorage.getItem('tf_sync_gist_id') || '';
 let syncLastHash = '';
 let syncQueue = [];
 let syncBusy = false;
+let cloudFileHandle = null;
+let cloudFileLastModified = 0;
+let setupActiveTab = 'cloudFile';
 let pendingImages = [];
 
 // ===== IndexedDB =====
@@ -642,6 +654,67 @@ async function createGist() {
   return data;
 }
 
+// ===== Cloud File Sync =====
+async function selectCloudFile() {
+  try {
+    const handle = await window.showSaveFilePicker({ suggestedName: 'taskflow.json', types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }] });
+    cloudFileHandle = handle; cloudFileLastModified = 0;
+    syncMode = 'cloudFile'; localStorage.setItem('tf_sync_mode', 'cloudFile'); localStorage.setItem('tf_cloud_configured', '1');
+    const existingData = await cloudFileLoad();
+    if (existingData && Array.isArray(existingData) && existingData.length > 0) {
+      const local = await dbGetAll(); await dbDeleteMany(local.map(t => t.id));
+      for (const t of existingData) await dbPut(t);
+      await reload();
+    } else {
+      const writable = await cloudFileHandle.createWritable();
+      await writable.write(JSON.stringify(await dbGetAll(), null, 2));
+      await writable.close(); cloudFileLastModified = Date.now();
+    }
+    document.getElementById('cloudFileStatus').innerHTML = '✅ 已连接: <b>' + handle.name + '</b>';
+    updateSyncUI('online', '云文件已连接');
+  } catch (e) { if (e.name !== 'AbortError') { document.getElementById('setupErrorCloud').textContent = '文件操作失败: ' + e.message; } }
+}
+async function cloudFileLoad() {
+  if (!cloudFileHandle) return null;
+  try {
+    if (await cloudFileHandle.queryPermission({ mode: 'read' }) !== 'granted') {
+      if (!await cloudFileHandle.requestPermission({ mode: 'read' })) { updateSyncUI('offline', '文件权限不足'); return null; }
+    }
+    const file = await cloudFileHandle.getFile();
+    if (file.lastModified === cloudFileLastModified) return null;
+    const text = await file.text(); cloudFileLastModified = file.lastModified;
+    return JSON.parse(text);
+  } catch (e) { updateSyncUI('offline', '文件读取失败'); return null; }
+}
+async function cloudFileSave() {
+  if (!cloudFileHandle) return;
+  try {
+    if (await cloudFileHandle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+      if (!await cloudFileHandle.requestPermission({ mode: 'readwrite' })) { updateSyncUI('offline', '无法写入文件'); return; }
+    }
+    const writable = await cloudFileHandle.createWritable();
+    await writable.write(JSON.stringify(await dbGetAll(), null, 2));
+    await writable.close(); cloudFileLastModified = Date.now();
+    updateSyncUI('online', '已保存到云文件');
+  } catch (e) { updateSyncUI('offline', '文件保存失败'); }
+}
+async function cloudFilePull() {
+  if (!cloudFileHandle || syncMode !== 'cloudFile') return;
+  const data = await cloudFileLoad();
+  if (!data || !Array.isArray(data)) return;
+  const existing = await dbGetAll();
+  const existingIds = new Set(existing.map(t => t.id));
+  const cloudIds = new Set(data.map(t => t.id));
+  const toRemove = existing.filter(t => !cloudIds.has(t.id));
+  if (toRemove.length > 0) await dbDeleteMany(toRemove.map(t => t.id));
+  for (const t of data) {
+    if (!existingIds.has(t.id)) await dbPut(t);
+    else { const local = existing.find(lt => lt.id === t.id); if (local && new Date(t.updatedAt) > new Date(local.updatedAt)) await dbPut(t); }
+  }
+  await reload();
+}
+async function cloudFilePush() { if (cloudFileHandle && syncMode === 'cloudFile') await cloudFileSave(); }
+
 // ===== Image Handling =====
 function compressImage(file) {
   return new Promise((resolve) => {
@@ -713,38 +786,45 @@ function closeLightbox() {
 }
 
 // ===== Setup Wizard =====
+function switchSetupTab(tab) {
+  setupActiveTab = tab;
+  document.querySelectorAll('.setup-tab').forEach(el => el.classList.toggle('active', el.dataset.sync === tab));
+  document.getElementById('setupPanelCloudFile').style.display = tab === 'cloudFile' ? 'block' : 'none';
+  document.getElementById('setupPanelGist').style.display = tab === 'gist' ? 'block' : 'none';
+}
+
 function showSetup() {
   document.getElementById('setupToken').value = syncToken;
-  document.getElementById('setupError').textContent = '';
+  document.getElementById('setupErrorGist').textContent = '';
+  document.getElementById('setupErrorCloud').textContent = '';
+  document.getElementById('cloudFileStatus').textContent = cloudFileHandle ? '✅ 已连接: ' + cloudFileHandle.name : '';
+  switchSetupTab(setupActiveTab);
   document.getElementById('setupOverlay').classList.add('show');
 }
 
-function skipSetup() {
-  document.getElementById('setupOverlay').classList.remove('show');
-}
+function skipSetup() { document.getElementById('setupOverlay').classList.remove('show'); }
 
-async function setupSync() {
+async function setupGistSync() {
   const token = document.getElementById('setupToken').value.trim();
-  const errEl = document.getElementById('setupError');
+  const errEl = document.getElementById('setupErrorGist');
   errEl.textContent = '';
   if (!token) { errEl.textContent = '请输入 GitHub Token'; return; }
   if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
-    errEl.textContent = 'Token 格式不正确，应以 ghp_ 或 github_pat_ 开头';
-    return;
+    errEl.textContent = 'Token 格式不正确'; return;
   }
   syncToken = token;
   localStorage.setItem('tf_sync_token', token);
   updateSyncUI('syncing', '正在连接...');
   try {
-    // Test token by creating a gist
     const testResp = await fetch(`${GIST_API}?per_page=1`, {
       headers: { 'Authorization': `token ${syncToken}`, 'Accept': 'application/vnd.github.v3+json' }
     });
-    if (!testResp.ok) {
-      throw new Error('Token 无效或网络错误 (HTTP ' + testResp.status + ')，请检查后重试');
-    }
-    // Create new gist
+    if (!testResp.ok) throw new Error('Token 无效 (HTTP ' + testResp.status + ')');
     await createGist();
+    syncMode = 'gist';
+    localStorage.setItem('tf_sync_mode', 'gist');
+    localStorage.removeItem('tf_cloud_configured');
+    cloudFileHandle = null;
     syncLastHash = '';
     await pushToCloud();
     document.getElementById('setupOverlay').classList.remove('show');
@@ -754,6 +834,9 @@ async function setupSync() {
     updateSyncUI('offline', '离线');
   }
 }
+
+// Legacy alias
+function setupSync() { setupGistSync(); }
 
 // ===== Filtering =====
 function filterTasks() {
@@ -1295,9 +1378,11 @@ async function importData(file) {
 // ===== Push Scheduling (debounced) =====
 let pushTimer = null;
 function schedulePush() {
-  if (!syncToken || !syncGistId) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(pushToCloud, 2000);
+  pushTimer = setTimeout(async () => {
+    if (syncMode === 'gist' && syncToken && syncGistId) await pushToCloud();
+    if (syncMode === 'cloudFile' && cloudFileHandle) await cloudFilePush();
+  }, 2000);
 }
 
 // ===== Reload =====
@@ -1350,28 +1435,26 @@ async function init() {
   await checkReminders();
   setInterval(checkReminders, REMINDER_INTERVAL);
 
-  // Sync setup
-  if (syncToken && syncGistId) {
-    updateSyncUI('syncing', '连接中...');
-    await pullFromCloud();
-  } else {
-    updateSyncUI('offline', '离线');
+  // Detect sync mode
+  if (!syncMode) {
+    if (localStorage.getItem('tf_cloud_configured') === '1') syncMode = 'cloudFile';
+    else if (syncToken && syncGistId) syncMode = 'gist';
   }
+  if (syncMode === 'cloudFile') updateSyncUI('offline', '请选择云文件');
+  if (syncMode === 'gist' && syncToken && syncGistId) { updateSyncUI('syncing', '连接中...'); await pullFromCloud(); }
 
   // Periodic sync
   setInterval(async () => {
-    if (syncToken && syncGistId) {
-      await pullFromCloud();
-    }
+    if (syncMode === 'gist' && syncToken && syncGistId) await pullFromCloud();
+    if (syncMode === 'cloudFile' && cloudFileHandle) await cloudFilePull();
   }, SYNC_INTERVAL);
 
   // Missed reminders
   setTimeout(async () => {
     const now = new Date().toISOString();
     const missed = flatTasks.filter(t =>
-      t.reminderEnabled === true && t.reminderTriggered === false &&
-      t.reminderDate && t.reminderDate < now &&
-      t.status !== 'completed' && t.status !== 'cancelled'
+      t.reminderEnabled && !t.reminderTriggered && t.reminderDate &&
+      t.reminderDate < now && t.status !== 'completed' && t.status !== 'cancelled'
     );
     if (missed.length > 0 && Notification.permission === 'granted') {
       for (const task of missed) {
@@ -1383,10 +1466,7 @@ async function init() {
     }
   }, 1000);
 
-  // Show setup wizard on first use if not configured
-  if (!syncToken) {
-    setTimeout(() => showSetup(), 1500);
-  }
+  if (!syncMode) setTimeout(() => showSetup(), 1500);
 }
 
 // Auto-start
@@ -1399,7 +1479,8 @@ return {
   duplicateTask, closeConfirm, onSearch, searchByTag, setView, setSort,
   onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
   toggleClockFormat, requestPermission, exportData, importData, reload,
-  showSetup, setupSync, skipSetup, addImages, removeImage, openLightbox, closeLightbox
+  showSetup, setupSync, setupGistSync, skipSetup, addImages, removeImage, openLightbox, closeLightbox,
+  switchSetupTab, selectCloudFile
 };
 })();
 </script>
