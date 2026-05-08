@@ -1,0 +1,1407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskFlow - 任务清单</title>
+<style>
+/* ===== CSS Reset & Variables ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f6fa;--surface:#fff;--border:#e2e5ea;--text:#1a1d26;--text2:#6b7280;
+  --accent:#4f6ef7;--accent-light:#eef1fe;--danger:#ef4444;--danger-light:#fef2f2;
+  --warning:#f59e0b;--warning-light:#fffbeb;--success:#10b981;--success-light:#ecfdf5;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --shadow-lg:0 4px 12px rgba(0,0,0,.08);--radius:8px;--radius-sm:4px;
+  --transition:150ms ease;
+}
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#111318;--surface:#1a1d26;--border:#2a2d37;--text:#e5e7eb;--text2:#9ca3af;
+    --accent:#6b8aff;--accent-light:#1e2440;--danger:#f87171;--danger-light:#2d1b1b;
+    --warning:#fbbf24;--warning-light:#2d2410;--success:#34d399;--success-light:#1b2d24;
+    --shadow:0 1px 3px rgba(0,0,0,.3);--shadow-lg:0 4px 12px rgba(0,0,0,.4);
+  }
+}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);height:100vh;display:grid;grid-template-rows:56px 1fr 28px;grid-template-columns:240px 1fr;overflow:hidden}
+button{cursor:pointer;border:none;background:none;font:inherit;color:inherit}
+input,select,textarea{font:inherit;color:inherit}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ===== Header ===== */
+.header{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);z-index:10}
+.header-brand{font-size:18px;font-weight:700;color:var(--accent);letter-spacing:-.5px;white-space:nowrap}
+.header-clock{font-size:12px;color:var(--text2);margin-left:auto;font-variant-numeric:tabular-nums;cursor:pointer;user-select:none;padding:4px 8px;border-radius:var(--radius-sm);transition:background var(--transition);white-space:nowrap}
+.header-clock:hover{background:var(--bg)}
+.sync-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sync-dot.online{background:var(--success)}
+.sync-dot.offline{background:var(--danger)}
+.sync-dot.syncing{background:var(--warning);animation:pulse .8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-indicator{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2);cursor:pointer;padding:4px 6px;border-radius:var(--radius-sm)}
+.sync-indicator:hover{background:var(--bg)}
+.btn{padding:6px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;transition:all var(--transition);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{opacity:.9}
+.btn-ghost{color:var(--text2)}.btn-ghost:hover{background:var(--bg);color:var(--text)}
+.btn-danger{color:var(--danger)}.btn-danger:hover{background:var(--danger-light)}
+.btn-sm{padding:4px 8px;font-size:12px}
+
+/* ===== Sidebar ===== */
+.sidebar{grid-row:2;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;padding:16px}
+.sidebar-section{margin-bottom:20px}
+.sidebar-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:8px}
+.sidebar-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--radius-sm);font-size:13px;color:var(--text2);cursor:pointer;transition:all var(--transition);margin-bottom:2px}
+.sidebar-item:hover{background:var(--bg);color:var(--text)}
+.sidebar-item.active{background:var(--accent-light);color:var(--accent);font-weight:600}
+.sidebar-item .count{margin-left:auto;font-size:11px;background:var(--bg);padding:1px 6px;border-radius:10px;min-width:20px;text-align:center}
+.sidebar-item.active .count{background:var(--accent);color:#fff}
+.sidebar-tag{display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:var(--radius-sm);font-size:12px;color:var(--text2);cursor:pointer;transition:all var(--transition);margin-bottom:1px}
+.sidebar-tag:hover{background:var(--bg);color:var(--text)}
+.sidebar-tag .tag-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0}
+.sort-select{width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;background:var(--surface);margin-top:4px}
+
+/* ===== Main ===== */
+.main{grid-row:2;overflow-y:auto;padding:20px 24px}
+.main-header{margin-bottom:20px}
+.overall-progress{margin-bottom:8px}
+.overall-progress .label{font-size:12px;color:var(--text2);margin-bottom:6px;display:flex;justify-content:space-between}
+.overall-progress .label strong{color:var(--text)}
+.progress-bar{height:8px;background:var(--bg);border-radius:4px;overflow:hidden}
+.progress-fill{height:100%;border-radius:4px;transition:width .3s ease}
+.progress-fill.low{background:var(--danger)}.progress-fill.medium{background:var(--warning)}.progress-fill.high{background:var(--accent)}.progress-fill.done{background:var(--success)}
+
+/* ===== Task Tree ===== */
+.task-list{list-style:none}
+.task-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:var(--radius-sm);transition:background var(--transition);cursor:pointer;font-size:14px;position:relative;min-height:36px}
+.task-row:hover{background:var(--bg)}
+.task-row.selected{background:var(--accent-light)}
+.task-row.dragging{opacity:.5}
+.task-row.drag-over{border-top:2px solid var(--accent)}
+.expand-btn{width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text2);flex-shrink:0;border-radius:var(--radius-sm);transition:all var(--transition)}
+.expand-btn:hover{background:var(--border)}
+.expand-btn.leaf{visibility:hidden}
+.checkbox{width:18px;height:18px;border:2px solid var(--border);border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all var(--transition)}
+.checkbox:hover{border-color:var(--accent)}
+.checkbox.checked{background:var(--success);border-color:var(--success)}
+.checkbox.checked::after{content:'✓';color:#fff;font-size:11px;font-weight:700}
+.checkbox.in-progress{background:var(--accent);border-color:var(--accent)}
+.checkbox.in-progress::after{content:'◐';color:#fff;font-size:10px}
+.task-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task-title.completed{text-decoration:line-through;color:var(--text2)}
+.task-priority{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.task-priority.p3{background:var(--danger)}.task-priority.p2{background:var(--warning)}.task-priority.p1{background:var(--accent)}.task-priority.p0{background:var(--border)}
+.task-due{font-size:11px;color:var(--text2);white-space:nowrap;flex-shrink:0}
+.task-due.overdue{color:var(--danger);font-weight:600}
+.task-reminder{font-size:12px;flex-shrink:0}
+.task-has-img{font-size:11px;flex-shrink:0}
+.task-actions{display:flex;gap:2px;flex-shrink:0;opacity:0;transition:opacity var(--transition)}
+.task-row:hover .task-actions{opacity:1}
+.task-actions button{padding:2px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm);font-size:12px;color:var(--text2)}
+.task-actions button:hover{background:var(--border);color:var(--text)}
+.task-mini-bar{width:60px;height:4px;background:var(--bg);border-radius:2px;overflow:hidden;flex-shrink:0;margin-left:4px}
+.task-mini-fill{height:100%;border-radius:2px;transition:width .3s ease}
+
+/* ===== Add Task Form ===== */
+.add-form{margin-bottom:12px;display:flex;gap:8px;align-items:center}
+.add-form input{flex:1;padding:8px 12px;border:2px solid var(--accent);border-radius:var(--radius);font-size:14px;background:var(--surface);outline:none}
+.add-form input:focus{border-color:var(--accent)}
+.add-form select{padding:8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;background:var(--surface)}
+
+/* ===== Detail Panel ===== */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:99;display:none}
+.overlay.show{display:block}
+.detail-panel{position:fixed;top:0;right:0;width:420px;height:100%;background:var(--surface);box-shadow:var(--shadow-lg);z-index:100;transform:translateX(100%);transition:transform .25s ease;display:flex;flex-direction:column}
+.detail-panel.show{transform:translateX(0)}
+.detail-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border)}
+.detail-header h3{font-size:16px;font-weight:600}
+.detail-body{flex:1;overflow-y:auto;padding:20px}
+.detail-field{margin-bottom:16px}
+.detail-field label{display:block;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+.detail-field input,.detail-field textarea,.detail-field select{width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;background:var(--surface);outline:none;resize:vertical}
+.detail-field input:focus,.detail-field textarea:focus,.detail-field select:focus{border-color:var(--accent)}
+.detail-field textarea{min-height:80px}
+.detail-actions{display:flex;gap:8px;justify-content:flex-end;padding:16px 20px;border-top:1px solid var(--border)}
+
+/* ===== Image Section ===== */
+.image-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.image-thumb{aspect-ratio:1;border-radius:var(--radius-sm);overflow:hidden;cursor:pointer;position:relative;border:2px solid var(--border);transition:border-color var(--transition)}
+.image-thumb:hover{border-color:var(--accent)}
+.image-thumb img{width:100%;height:100%;object-fit:cover}
+.image-thumb .img-remove{position:absolute;top:2px;right:2px;width:20px;height:20px;background:var(--danger);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;opacity:0;transition:opacity var(--transition)}
+.image-thumb:hover .img-remove{opacity:1}
+.image-drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;color:var(--text2);font-size:13px;cursor:pointer;transition:all var(--transition);margin-top:8px}
+.image-drop-zone:hover,.image-drop-zone.drag-over{border-color:var(--accent);background:var(--accent-light);color:var(--accent)}
+.image-drop-zone input{display:none}
+.image-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:300;display:none;align-items:center;justify-content:center;cursor:pointer}
+.image-lightbox.show{display:flex}
+.image-lightbox img{max-width:90vw;max-height:90vh;border-radius:var(--radius)}
+.image-lightbox .close-lightbox{position:absolute;top:20px;right:20px;color:#fff;font-size:24px;padding:8px}
+
+/* ===== Setup Wizard ===== */
+.setup-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:400;display:none;align-items:center;justify-content:center}
+.setup-overlay.show{display:flex}
+.setup-dialog{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:32px;max-width:480px;width:90%;text-align:center}
+.setup-dialog h2{font-size:20px;margin-bottom:8px}
+.setup-dialog .step{font-size:13px;color:var(--text2);margin-bottom:24px}
+.setup-dialog .step a{color:var(--accent)}
+.setup-dialog input{width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:14px;background:var(--surface);margin-bottom:12px;outline:none}
+.setup-dialog input:focus{border-color:var(--accent)}
+.setup-dialog .setup-error{color:var(--danger);font-size:12px;margin-bottom:8px;min-height:18px}
+.setup-dialog .setup-hint{font-size:11px;color:var(--text2);margin-bottom:16px;text-align:left;line-height:1.6}
+.setup-dialog .btn{width:100%;justify-content:center;padding:10px}
+.setup-skip{font-size:12px;color:var(--text2);margin-top:12px;cursor:pointer;text-decoration:underline}
+
+/* ===== Context Menu ===== */
+.context-menu{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:200;min-width:180px;padding:4px;display:none}
+.context-menu.show{display:block}
+.context-menu button{display:flex;align-items:center;gap:8px;width:100%;padding:8px 12px;border-radius:var(--radius-sm);font-size:13px;text-align:left;transition:background var(--transition)}
+.context-menu button:hover{background:var(--bg)}
+.context-menu .divider{height:1px;background:var(--border);margin:4px 0}
+
+/* ===== Search ===== */
+.search-bar{flex:1;max-width:360px;margin:0 12px;position:relative}
+.search-bar input{width:100%;padding:7px 12px 7px 32px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;background:var(--bg);outline:none;transition:all var(--transition)}
+.search-bar input:focus{border-color:var(--accent);background:var(--surface)}
+.search-bar .search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text2)}
+
+/* ===== Status Bar ===== */
+.status-bar{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:0 20px;background:var(--surface);border-top:1px solid var(--border);font-size:11px;color:var(--text2)}
+
+/* ===== Confirm Dialog ===== */
+.confirm-dialog{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow-lg);z-index:200;padding:20px 24px;min-width:320px;display:none}
+.confirm-dialog.show{display:block}
+.confirm-dialog p{margin-bottom:16px;font-size:14px}
+.confirm-dialog .btns{display:flex;gap:8px;justify-content:flex-end}
+
+/* ===== Notification Banner ===== */
+.banner{grid-column:1/-1;background:var(--warning-light);color:var(--warning);padding:6px 20px;font-size:12px;display:none;align-items:center;justify-content:space-between}
+.banner.show{display:flex}
+.banner button{color:inherit;text-decoration:underline;font-size:12px}
+
+/* ===== Empty State ===== */
+.empty-state{text-align:center;padding:60px 20px;color:var(--text2)}
+.empty-state .icon{font-size:48px;margin-bottom:12px}
+.empty-state p{font-size:14px;margin-bottom:4px}
+
+/* ===== Responsive ===== */
+@media(max-width:768px){
+  body{grid-template-columns:1fr;grid-template-rows:56px 1fr 28px}
+  .sidebar{display:none}
+  .detail-panel{width:100%}
+  .header-clock{display:none}
+  .search-bar{max-width:200px}
+}
+</style>
+</head>
+<body>
+
+<!-- Notification Banner -->
+<div class="banner" id="banner">
+  <span>⚠️ 通知功能已禁用，提醒将无法弹出。</span>
+  <button onclick="TaskFlow.requestPermission()">启用通知</button>
+</div>
+
+<!-- Header -->
+<header class="header">
+  <span class="header-brand">📋 TaskFlow</span>
+  <div class="search-bar">
+    <span class="search-icon">🔍</span>
+    <input type="text" id="searchInput" placeholder="搜索... (Ctrl+K)" oninput="TaskFlow.onSearch(this.value)">
+  </div>
+  <span class="sync-indicator" id="syncIndicator" onclick="TaskFlow.showSetup()" title="点击设置同步">
+    <span class="sync-dot offline" id="syncDot"></span>
+    <span id="syncLabel">离线</span>
+  </span>
+  <span class="header-clock" id="clock" title="点击切换12/24小时制" onclick="TaskFlow.toggleClockFormat()"></span>
+  <button class="btn btn-primary" onclick="TaskFlow.showAddForm(null)" title="新建任务 (Ctrl+N)">+ 新建</button>
+  <button class="btn btn-ghost" onclick="TaskFlow.exportData()" title="导出">📤</button>
+  <button class="btn btn-ghost" onclick="document.getElementById('importFile').click()" title="导入">📥</button>
+  <input type="file" id="importFile" accept=".json" style="display:none" onchange="TaskFlow.importData(this.files[0])">
+</header>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section">
+    <div class="sidebar-title">视图</div>
+    <div class="sidebar-item active" data-view="all" onclick="TaskFlow.setView('all')">📋 全部任务 <span class="count" id="countAll">0</span></div>
+    <div class="sidebar-item" data-view="today" onclick="TaskFlow.setView('today')">📅 今天到期 <span class="count" id="countToday">0</span></div>
+    <div class="sidebar-item" data-view="upcoming" onclick="TaskFlow.setView('upcoming')">🔜 即将到来 <span class="count" id="countUpcoming">0</span></div>
+    <div class="sidebar-item" data-view="completed" onclick="TaskFlow.setView('completed')">✅ 已完成 <span class="count" id="countCompleted">0</span></div>
+    <div class="sidebar-item" data-view="overdue" onclick="TaskFlow.setView('overdue')">⚠️ 已逾期 <span class="count" id="countOverdue">0</span></div>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-title">排序</div>
+    <select class="sort-select" onchange="TaskFlow.setSort(this.value)">
+      <option value="order">自定义顺序</option>
+      <option value="created">创建时间</option>
+      <option value="due">截止日期</option>
+      <option value="priority">优先级</option>
+      <option value="title">名称</option>
+    </select>
+  </div>
+  <div class="sidebar-section">
+    <div class="sidebar-title">标签</div>
+    <div id="tagList"></div>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="main" id="main">
+  <div class="main-header">
+    <div class="overall-progress">
+      <div class="label"><span>总体进度</span><strong id="overallPercent">0%</strong></div>
+      <div class="progress-bar"><div class="progress-fill low" id="overallBar" style="width:0%"></div></div>
+    </div>
+  </div>
+  <div id="addFormContainer"></div>
+  <div id="taskTree"></div>
+</main>
+
+<!-- Status Bar -->
+<footer class="status-bar">
+  <span id="statusTotal">0 个任务</span>
+  <span id="statusCompleted">0 已完成</span>
+  <span id="statusInProgress">0 进行中</span>
+  <span id="statusOverdue">0 已逾期</span>
+</footer>
+
+<!-- Detail Panel -->
+<div class="overlay" id="overlay" onclick="TaskFlow.closeDetail()"></div>
+<div class="detail-panel" id="detailPanel">
+  <div class="detail-header">
+    <h3>任务详情</h3>
+    <button class="btn btn-ghost" onclick="TaskFlow.closeDetail()">✕</button>
+  </div>
+  <div class="detail-body">
+    <div class="detail-field">
+      <label>标题</label>
+      <input type="text" id="detailTitle">
+    </div>
+    <div class="detail-field">
+      <label>描述</label>
+      <textarea id="detailDesc" rows="2"></textarea>
+    </div>
+    <div class="detail-field">
+      <label>状态</label>
+      <select id="detailStatus">
+        <option value="pending">待开始</option>
+        <option value="in_progress">进行中</option>
+        <option value="completed">已完成</option>
+        <option value="cancelled">已取消</option>
+      </select>
+    </div>
+    <div class="detail-field">
+      <label>优先级</label>
+      <select id="detailPriority">
+        <option value="0">低</option>
+        <option value="1">中</option>
+        <option value="2">高</option>
+        <option value="3">紧急</option>
+      </select>
+    </div>
+    <div class="detail-field">
+      <label>截止日期</label>
+      <input type="datetime-local" id="detailDueDate">
+      <button class="btn btn-ghost btn-sm" style="margin-top:4px" onclick="document.getElementById('detailDueDate').value=''">清除日期</button>
+    </div>
+    <div class="detail-field">
+      <label>提醒时间</label>
+      <input type="datetime-local" id="detailReminderDate">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px">
+        <input type="checkbox" id="detailReminderEnabled"> 启用提醒
+      </label>
+    </div>
+    <div class="detail-field">
+      <label>标签（逗号分隔）</label>
+      <input type="text" id="detailTags" placeholder="例如: 工作, 紧急, 个人">
+    </div>
+    <div class="detail-field">
+      <label>备注</label>
+      <textarea id="detailNotes" rows="2" placeholder="自由记录..."></textarea>
+    </div>
+    <div class="detail-field">
+      <label>图片</label>
+      <div class="image-grid" id="detailImages"></div>
+      <div class="image-drop-zone" id="imageDropZone">
+        📷 点击选择图片、拖放或 Ctrl+V 粘贴
+        <input type="file" id="imageInput" accept="image/*" multiple onchange="TaskFlow.addImages(this.files)">
+      </div>
+    </div>
+  </div>
+  <div class="detail-actions">
+    <button class="btn btn-danger" onclick="TaskFlow.deleteFromDetail()">删除任务</button>
+    <button class="btn btn-ghost" onclick="TaskFlow.closeDetail()">取消</button>
+    <button class="btn btn-primary" onclick="TaskFlow.saveDetail()">保存</button>
+  </div>
+</div>
+
+<!-- Image Lightbox -->
+<div class="image-lightbox" id="imageLightbox" onclick="TaskFlow.closeLightbox()">
+  <span class="close-lightbox">✕</span>
+  <img id="lightboxImg" src="" alt="预览" onclick="event.stopPropagation()">
+</div>
+
+<!-- Setup Wizard -->
+<div class="setup-overlay" id="setupOverlay">
+  <div class="setup-dialog">
+    <h2>☁️ 设置云同步</h2>
+    <p class="step">通过 GitHub Gist 在电脑和手机之间实时同步任务数据</p>
+    <div class="setup-hint">
+      1. 前往 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a><br>
+      2. 点击 "Generate new token" → "Generate new token (classic)"<br>
+      3. 勾选 <b>gist</b> 权限，点击生成<br>
+      4. 复制生成的 Token 粘贴到下方
+    </div>
+    <input type="password" id="setupToken" placeholder="粘贴 GitHub Token (ghp_...)">
+    <div class="setup-error" id="setupError"></div>
+    <button class="btn btn-primary" onclick="TaskFlow.setupSync()">连接并开始同步</button>
+    <div class="setup-skip" onclick="TaskFlow.skipSetup()">跳过，仅使用本地存储</div>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div class="context-menu" id="contextMenu"></div>
+
+<!-- Confirm Dialog -->
+<div class="confirm-dialog" id="confirmDialog">
+  <p id="confirmMsg"></p>
+  <div class="btns">
+    <button class="btn btn-ghost" onclick="TaskFlow.closeConfirm()">取消</button>
+    <button class="btn btn-danger" id="confirmBtn">确认</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const TaskFlow = (() => {
+// ===== Constants =====
+const DB_NAME = 'taskflow';
+const DB_VERSION = 1;
+const STORE = 'tasks';
+const REMINDER_INTERVAL = 30000;
+const SYNC_INTERVAL = 10000;
+const GIST_API = 'https://api.github.com/gists';
+
+// ===== State =====
+let currentView = 'all';
+let currentSort = 'order';
+let selectedTaskId = null;
+let editingTaskId = null;
+let confirmCallback = null;
+let clock24h = true;
+let flatTasks = [];
+let taskTree = [];
+let searchQuery = '';
+let syncToken = localStorage.getItem('tf_sync_token') || '';
+let syncGistId = localStorage.getItem('tf_sync_gist_id') || '';
+let syncLastHash = '';
+let syncQueue = [];
+let syncBusy = false;
+let pendingImages = [];
+
+// ===== IndexedDB =====
+function dbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        const store = db.createObjectStore(STORE, { keyPath: 'id' });
+        store.createIndex('parentId', 'parentId', { unique: false });
+        store.createIndex('dueDate', 'dueDate', { unique: false });
+        store.createIndex('reminderDate', 'reminderDate', { unique: false });
+        store.createIndex('status', 'status', { unique: false });
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbTx(db, mode) { return db.transaction(STORE, mode).objectStore(STORE); }
+
+async function dbGetAll() {
+  const db = await dbOpen();
+  return new Promise((resolve) => { const req = dbTx(db, 'readonly').getAll(); req.onsuccess = () => resolve(req.result); });
+}
+
+async function dbPut(task) {
+  const db = await dbOpen();
+  task.updatedAt = new Date().toISOString();
+  return new Promise((resolve) => { const req = dbTx(db, 'readwrite').put(task); req.onsuccess = () => resolve(task); });
+}
+
+async function dbDelete(id) {
+  const all = await dbGetAll();
+  const toDelete = new Set();
+  function collectDescendants(pid) {
+    for (const t of all) { if (t.parentId === pid) { toDelete.add(t.id); collectDescendants(t.id); } }
+  }
+  toDelete.add(id); collectDescendants(id);
+  const db = await dbOpen();
+  const store = dbTx(db, 'readwrite');
+  for (const tid of toDelete) { await new Promise((r) => { const req = store.delete(tid); req.onsuccess = r; }); }
+}
+
+async function dbDeleteMany(ids) {
+  const db = await dbOpen();
+  const store = dbTx(db, 'readwrite');
+  for (const id of ids) { await new Promise((r) => { const req = store.delete(id); req.onsuccess = r; }); }
+}
+
+async function dbPutAll(tasks) {
+  const db = await dbOpen();
+  const store = dbTx(db, 'readwrite');
+  for (const t of tasks) { await new Promise((r) => { const req = store.put(t); req.onsuccess = r; }); }
+}
+
+// ===== Task Helpers =====
+function newTask(title, parentId = null) {
+  return {
+    id: crypto.randomUUID(),
+    title: title || '新任务',
+    description: '',
+    status: 'pending',
+    priority: 0,
+    parentId,
+    sortOrder: Date.now(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    dueDate: null,
+    reminderDate: null,
+    reminderEnabled: false,
+    reminderTriggered: false,
+    collapsed: false,
+    tags: [],
+    notes: '',
+    images: []
+  };
+}
+
+function buildTree(tasks, parentId = null) {
+  const children = tasks
+    .filter(t => t.parentId === parentId)
+    .sort((a, b) => {
+      switch (currentSort) {
+        case 'created': return new Date(b.createdAt) - new Date(a.createdAt);
+        case 'due': return (a.dueDate || '9999') > (b.dueDate || '9999') ? 1 : -1;
+        case 'priority': return b.priority - a.priority;
+        case 'title': return a.title.localeCompare(b.title, 'zh-CN');
+        default: return a.sortOrder - b.sortOrder;
+      }
+    });
+  return children.map(t => ({ ...t, children: buildTree(tasks, t.id) }));
+}
+
+function flattenTree(nodes, result = []) {
+  for (const n of nodes) { result.push(n); flattenTree(n.children, result); }
+  return result;
+}
+
+function getAncestorIds(id) {
+  const ids = [];
+  let current = flatTasks.find(t => t.id === id);
+  while (current && current.parentId) { ids.push(current.parentId); current = flatTasks.find(t => t.id === current.parentId); }
+  return ids;
+}
+
+function calculateProgress(task) {
+  if (!task.children || task.children.length === 0) {
+    if (task.status === 'completed') return 100;
+    if (task.status === 'in_progress') return 50;
+    return 0;
+  }
+  if (task.children.length === 0) return 0;
+  const sum = task.children.reduce((s, c) => s + calculateProgress(c), 0);
+  return Math.round(sum / task.children.length);
+}
+
+function countDescendants(task) {
+  let count = 0;
+  for (const c of task.children) { count += 1 + countDescendants(c); }
+  return count;
+}
+
+function progressClass(pct) {
+  if (pct >= 100) return 'done';
+  if (pct >= 75) return 'high';
+  if (pct >= 40) return 'medium';
+  return 'low';
+}
+
+// ===== Gist Sync =====
+function updateSyncUI(status, label) {
+  const dot = document.getElementById('syncDot');
+  const lbl = document.getElementById('syncLabel');
+  dot.className = 'sync-dot ' + status;
+  lbl.textContent = label;
+}
+
+async function gistFetch() {
+  if (!syncToken || !syncGistId) return null;
+  try {
+    const resp = await fetch(`${GIST_API}/${syncGistId}`, {
+      headers: { 'Authorization': `token ${syncToken}`, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (!resp.ok) throw new Error('Fetch failed: ' + resp.status);
+    return await resp.json();
+  } catch (e) { console.warn('Gist fetch error:', e.message); return null; }
+}
+
+async function gistUpdate(files) {
+  if (!syncToken || !syncGistId) return null;
+  try {
+    const resp = await fetch(`${GIST_API}/${syncGistId}`, {
+      method: 'PATCH',
+      headers: { 'Authorization': `token ${syncToken}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
+      body: JSON.stringify({ files })
+    });
+    if (!resp.ok) throw new Error('Update failed: ' + resp.status);
+    return await resp.json();
+  } catch (e) { console.warn('Gist update error:', e.message); return null; }
+}
+
+async function pullFromCloud() {
+  if (!syncToken || !syncGistId) return;
+  const gist = await gistFetch();
+  if (!gist || !gist.files || !gist.files['tasks.json']) return;
+  const content = gist.files['tasks.json'].content;
+  const hash = content; // simple hash: content string
+  if (hash === syncLastHash) return; // no change
+  try {
+    const cloudTasks = JSON.parse(content);
+    if (!Array.isArray(cloudTasks)) return;
+    // Merge: cloud wins for any task with newer updatedAt
+    const localMap = {};
+    for (const t of flatTasks) localMap[t.id] = t;
+    const cloudMap = {};
+    for (const t of cloudTasks) cloudMap[t.id] = t;
+    const merged = [];
+    const allIds = new Set([...Object.keys(localMap), ...Object.keys(cloudMap)]);
+    for (const id of allIds) {
+      const local = localMap[id];
+      const cloud = cloudMap[id];
+      if (!local) { merged.push(cloud); continue; }
+      if (!cloud) { merged.push(local); continue; }
+      // Both exist: cloud wins
+      merged.push(cloud);
+    }
+    // Replace local DB
+    const existing = await dbGetAll();
+    await dbDeleteMany(existing.map(t => t.id));
+    await dbPutAll(merged);
+    syncLastHash = hash;
+    updateSyncUI('online', '已同步');
+    await reload();
+  } catch (e) { console.warn('Parse error:', e.message); }
+}
+
+async function pushToCloud() {
+  if (!syncToken || !syncGistId) return;
+  if (syncBusy) { syncQueue.push(Date.now()); return; }
+  syncBusy = true;
+  updateSyncUI('syncing', '同步中...');
+  try {
+    const all = await dbGetAll();
+    const content = JSON.stringify(all);
+    const hash = content;
+    if (hash === syncLastHash) { syncBusy = false; updateSyncUI('online', '已同步'); return; }
+    const result = await gistUpdate({ 'tasks.json': { content } });
+    if (result) {
+      syncLastHash = hash;
+      updateSyncUI('online', '已同步');
+    } else {
+      updateSyncUI('offline', '同步失败');
+    }
+  } catch (e) { updateSyncUI('offline', '同步失败'); }
+  syncBusy = false;
+  // Process queued pushes
+  if (syncQueue.length > 0) { syncQueue = []; setTimeout(pushToCloud, 2000); }
+}
+
+async function createGist() {
+  const initContent = JSON.stringify(await dbGetAll());
+  const resp = await fetch(GIST_API, {
+    method: 'POST',
+    headers: { 'Authorization': `token ${syncToken}`, 'Content-Type': 'application/json', 'Accept': 'application/vnd.github.v3+json' },
+    body: JSON.stringify({
+      description: 'TaskFlow 任务数据 - 请勿手动修改',
+      public: false,
+      files: { 'tasks.json': { content: initContent } }
+    })
+  });
+  if (!resp.ok) {
+    const err = await resp.json();
+    throw new Error(err.message || '创建 Gist 失败 (HTTP ' + resp.status + ')');
+  }
+  const data = await resp.json();
+  syncGistId = data.id;
+  localStorage.setItem('tf_sync_gist_id', data.id);
+  return data;
+}
+
+// ===== Image Handling =====
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 800;
+        let w = img.width, h = img.height;
+        if (w > maxW) { h = Math.round(h * (maxW / w)); w = maxW; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function addImages(files) {
+  if (!files || !files.length) return;
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+    const dataUrl = await compressImage(file);
+    pendingImages.push({ id: crypto.randomUUID(), data: dataUrl, filename: file.name, createdAt: new Date().toISOString() });
+  }
+  renderDetailImages();
+}
+
+function renderDetailImages() {
+  const container = document.getElementById('detailImages');
+  const allImages = [...(getEditingImages()), ...pendingImages];
+  container.innerHTML = allImages.map(img =>
+    `<div class="image-thumb" onclick="TaskFlow.openLightbox('${img.id}')">
+      <img src="${img.data}" alt="${img.filename || ''}">
+      <span class="img-remove" onclick="event.stopPropagation();TaskFlow.removeImage('${img.id}')">✕</span>
+    </div>`
+  ).join('');
+}
+
+function getEditingImages() {
+  if (!editingTaskId) return [];
+  const task = flatTasks.find(t => t.id === editingTaskId);
+  return task ? (task.images || []) : [];
+}
+
+function removeImage(id) {
+  pendingImages = pendingImages.filter(img => img.id !== id);
+  if (editingTaskId) {
+    const task = flatTasks.find(t => t.id === editingTaskId);
+    if (task) task.images = (task.images || []).filter(img => img.id !== id);
+  }
+  renderDetailImages();
+}
+
+function openLightbox(id) {
+  const allImages = [...(getEditingImages()), ...pendingImages];
+  const img = allImages.find(i => i.id === id);
+  if (!img) return;
+  document.getElementById('lightboxImg').src = img.data;
+  document.getElementById('imageLightbox').classList.add('show');
+}
+
+function closeLightbox() {
+  document.getElementById('imageLightbox').classList.remove('show');
+}
+
+// ===== Setup Wizard =====
+function showSetup() {
+  document.getElementById('setupToken').value = syncToken;
+  document.getElementById('setupError').textContent = '';
+  document.getElementById('setupOverlay').classList.add('show');
+}
+
+function skipSetup() {
+  document.getElementById('setupOverlay').classList.remove('show');
+}
+
+async function setupSync() {
+  const token = document.getElementById('setupToken').value.trim();
+  const errEl = document.getElementById('setupError');
+  errEl.textContent = '';
+  if (!token) { errEl.textContent = '请输入 GitHub Token'; return; }
+  if (!token.startsWith('ghp_') && !token.startsWith('github_pat_')) {
+    errEl.textContent = 'Token 格式不正确，应以 ghp_ 或 github_pat_ 开头';
+    return;
+  }
+  syncToken = token;
+  localStorage.setItem('tf_sync_token', token);
+  updateSyncUI('syncing', '正在连接...');
+  try {
+    // Test token by creating a gist
+    const testResp = await fetch(`${GIST_API}?per_page=1`, {
+      headers: { 'Authorization': `token ${syncToken}`, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    if (!testResp.ok) {
+      throw new Error('Token 无效或网络错误 (HTTP ' + testResp.status + ')，请检查后重试');
+    }
+    // Create new gist
+    await createGist();
+    syncLastHash = '';
+    await pushToCloud();
+    document.getElementById('setupOverlay').classList.remove('show');
+    updateSyncUI('online', '已同步');
+  } catch (e) {
+    errEl.textContent = e.message;
+    updateSyncUI('offline', '离线');
+  }
+}
+
+// ===== Filtering =====
+function filterTasks() {
+  let filtered;
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+
+  switch (currentView) {
+    case 'today':
+      filtered = flatTasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) === today);
+      break;
+    case 'upcoming':
+      const next7 = new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+      filtered = flatTasks.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= next7);
+      break;
+    case 'completed':
+      filtered = flatTasks.filter(t => t.status === 'completed');
+      break;
+    case 'overdue':
+      filtered = flatTasks.filter(t => t.dueDate && t.dueDate < today && t.status !== 'completed' && t.status !== 'cancelled');
+      break;
+    default:
+      filtered = [...flatTasks];
+  }
+
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    const matchingIds = new Set();
+    for (const t of flatTasks) {
+      if (t.title.toLowerCase().includes(q) || t.notes.toLowerCase().includes(q) ||
+          t.tags.some(tag => tag.toLowerCase().includes(q))) {
+        matchingIds.add(t.id);
+        for (const aid of getAncestorIds(t.id)) matchingIds.add(aid);
+      }
+    }
+    filtered = filtered.filter(t => matchingIds.has(t.id));
+  }
+
+  const idSet = new Set(filtered.map(t => t.id));
+  const roots = filtered.filter(t => !t.parentId || !idSet.has(t.parentId));
+  taskTree = roots.map(t => ({ ...t, children: buildTree(filtered, t.id) }));
+}
+
+// ===== Rendering =====
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const taskDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((taskDay - today) / 86400000);
+  const timeStr = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  if (diffDays === 0) return `今天 ${timeStr}`;
+  if (diffDays === 1) return `明天 ${timeStr}`;
+  if (diffDays === -1) return `昨天 ${timeStr}`;
+  if (diffDays < 0) return `${Math.abs(diffDays)}天前`;
+  if (diffDays < 7) return `${diffDays}天后 ${timeStr}`;
+  return d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) + ' ' + timeStr;
+}
+
+function isOverdue(iso) {
+  if (!iso) return false;
+  return new Date(iso) < new Date() && iso.slice(0, 10) < new Date().toISOString().slice(0, 10);
+}
+
+function renderTaskRow(task, depth = 0) {
+  const hasChildren = task.children && task.children.length > 0;
+  const pct = calculateProgress(task);
+  const pctClass = progressClass(pct);
+  const collapsed = task.collapsed;
+  const isSelected = task.id === selectedTaskId;
+  const priorityClass = `p${task.priority}`;
+  const dueStr = task.dueDate ? formatDate(task.dueDate) : '';
+  const overdue = task.dueDate && isOverdue(task.dueDate) && task.status !== 'completed' && task.status !== 'cancelled';
+  const statusClass = task.status === 'completed' ? 'checked' : (task.status === 'in_progress' ? 'in-progress' : '');
+  const titleClass = task.status === 'completed' ? 'completed' : '';
+  const hasImages = task.images && task.images.length > 0;
+
+  let html = `<li><div class="task-row${isSelected ? ' selected' : ''}" data-id="${task.id}" data-depth="${depth}"
+    onclick="TaskFlow.selectTask('${task.id}', event)"
+    ondblclick="TaskFlow.startInlineEdit('${task.id}', event)"
+    oncontextmenu="TaskFlow.showContextMenu('${task.id}', event)"
+    draggable="true"
+    ondragstart="TaskFlow.onDragStart(event, '${task.id}')"
+    ondragover="TaskFlow.onDragOver(event, '${task.id}')"
+    ondragleave="TaskFlow.onDragLeave(event)"
+    ondrop="TaskFlow.onDrop(event, '${task.id}')"
+    ondragend="TaskFlow.onDragEnd(event)">`;
+
+  html += `<span style="width:${depth * 20}px;flex-shrink:0"></span>`;
+  html += `<button class="expand-btn${hasChildren ? '' : ' leaf'}" onclick="TaskFlow.toggleCollapse(event, '${task.id}')">${collapsed ? '▶' : '▼'}</button>`;
+  html += `<div class="checkbox ${statusClass}" onclick="TaskFlow.toggleStatus(event, '${task.id}')" title="点击切换状态"></div>`;
+  html += `<div class="task-priority ${priorityClass}" title="优先级: ${['低','中','高','紧急'][task.priority]}"></div>`;
+  html += `<span class="task-title ${titleClass}" id="title-${task.id}">${escapeHtml(task.title)}</span>`;
+
+  if (hasChildren) {
+    html += `<div class="task-mini-bar"><div class="task-mini-fill ${pctClass}" style="width:${pct}%"></div></div>`;
+  }
+  if (hasImages) {
+    html += `<span class="task-has-img" title="${task.images.length}张图片">🖼${task.images.length}</span>`;
+  }
+  if (task.reminderEnabled && task.reminderDate) {
+    html += `<span class="task-reminder" title="提醒: ${formatDate(task.reminderDate)}">⏰</span>`;
+  }
+  if (dueStr) {
+    html += `<span class="task-due${overdue ? ' overdue' : ''}">${dueStr}</span>`;
+  }
+
+  html += `<span class="task-actions">
+    <button onclick="TaskFlow.showAddForm('${task.id}', event)" title="添加子任务">＋</button>
+    <button onclick="TaskFlow.showDetail('${task.id}', event)" title="编辑">✎</button>
+    <button onclick="TaskFlow.deleteTask('${task.id}', event)" title="删除">🗑</button>
+  </span>`;
+  html += '</div>';
+
+  if (hasChildren && !collapsed) {
+    html += '<ul class="task-list">';
+    for (const child of task.children) { html += renderTaskRow(child, depth + 1); }
+    html += '</ul>';
+  }
+  html += '</li>';
+  return html;
+}
+
+function renderAll() {
+  filterTasks();
+  const container = document.getElementById('taskTree');
+  if (taskTree.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">📝</div><p>${searchQuery ? '没有匹配的任务' : '还没有任务'}</p><p style="font-size:12px">${searchQuery ? '' : '点击 "+ 新建" 开始吧'}</p></div>`;
+  } else {
+    container.innerHTML = `<ul class="task-list">${taskTree.map(t => renderTaskRow(t, 0)).join('')}</ul>`;
+  }
+  updateCounts();
+  updateOverallProgress();
+  updateStatusBar();
+  renderTags();
+}
+
+function updateCounts() {
+  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const next7 = new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10);
+  document.getElementById('countAll').textContent = flatTasks.filter(t => t.status !== 'cancelled').length;
+  document.getElementById('countToday').textContent = flatTasks.filter(t => t.dueDate && t.dueDate.slice(0, 10) === today && t.status !== 'completed').length;
+  document.getElementById('countUpcoming').textContent = flatTasks.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= next7 && t.status !== 'completed').length;
+  document.getElementById('countCompleted').textContent = flatTasks.filter(t => t.status === 'completed').length;
+  document.getElementById('countOverdue').textContent = flatTasks.filter(t => t.dueDate && isOverdue(t.dueDate) && t.status !== 'completed' && t.status !== 'cancelled').length;
+}
+
+function updateOverallProgress() {
+  if (taskTree.length === 0) {
+    document.getElementById('overallPercent').textContent = '0%';
+    document.getElementById('overallBar').style.width = '0%';
+    document.getElementById('overallBar').className = 'progress-fill low';
+    return;
+  }
+  const sum = taskTree.reduce((s, t) => s + calculateProgress(t), 0);
+  const pct = Math.round(sum / taskTree.length);
+  document.getElementById('overallPercent').textContent = pct + '%';
+  document.getElementById('overallBar').style.width = pct + '%';
+  document.getElementById('overallBar').className = 'progress-fill ' + progressClass(pct);
+}
+
+function updateStatusBar() {
+  const all = flatTasks.filter(t => t.status !== 'cancelled');
+  document.getElementById('statusTotal').textContent = all.length + ' 个任务';
+  document.getElementById('statusCompleted').textContent = all.filter(t => t.status === 'completed').length + ' 已完成';
+  document.getElementById('statusInProgress').textContent = all.filter(t => t.status === 'in_progress').length + ' 进行中';
+  document.getElementById('statusOverdue').textContent = all.filter(t => t.dueDate && isOverdue(t.dueDate) && t.status !== 'completed').length + ' 已逾期';
+}
+
+function renderTags() {
+  const tags = {};
+  for (const t of flatTasks) { for (const tag of t.tags) { if (tag.trim()) tags[tag.trim()] = (tags[tag.trim()] || 0) + 1; } }
+  const sorted = Object.entries(tags).sort((a, b) => b[1] - a[1]);
+  const colors = ['#4f6ef7', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4'];
+  document.getElementById('tagList').innerHTML = sorted.map(([tag, count], i) =>
+    `<div class="sidebar-tag" onclick="TaskFlow.searchByTag('${escapeHtml(tag)}')">
+      <span class="tag-dot" style="background:${colors[i % colors.length]}"></span>
+      ${escapeHtml(tag)} <span style="margin-left:auto;font-size:11px;color:var(--text2)">${count}</span>
+    </div>`
+  ).join('') || '<div style="font-size:12px;color:var(--text2)">暂无标签</div>';
+}
+
+// ===== Add Task Form =====
+function showAddForm(parentId, event) {
+  if (event) { event.stopPropagation(); event.preventDefault(); }
+  const container = document.getElementById('addFormContainer');
+  container.innerHTML = `
+    <div class="add-form">
+      <input type="text" id="addTitle" placeholder="${parentId ? '添加子任务...' : '输入新任务标题...'}" autofocus>
+      <select id="addPriority">
+        <option value="0">低</option>
+        <option value="1" selected>中</option>
+        <option value="2">高</option>
+        <option value="3">紧急</option>
+      </select>
+      <button class="btn btn-primary btn-sm" onclick="TaskFlow.addTask('${parentId || ''}')">添加</button>
+      <button class="btn btn-ghost btn-sm" onclick="TaskFlow.cancelAdd()">取消</button>
+    </div>`;
+  const input = document.getElementById('addTitle');
+  input.focus();
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') TaskFlow.addTask(parentId || '');
+    if (e.key === 'Escape') TaskFlow.cancelAdd();
+  });
+}
+
+function cancelAdd() { document.getElementById('addFormContainer').innerHTML = ''; }
+
+async function addTask(parentId) {
+  const titleEl = document.getElementById('addTitle');
+  const priorityEl = document.getElementById('addPriority');
+  const title = titleEl.value.trim();
+  if (!title) return;
+  const task = newTask(title, parentId || null);
+  task.priority = parseInt(priorityEl.value);
+  await dbPut(task);
+  document.getElementById('addFormContainer').innerHTML = '';
+  if (parentId) {
+    const parent = flatTasks.find(t => t.id === parentId);
+    if (parent && parent.collapsed) { parent.collapsed = false; await dbPut(parent); }
+  }
+  await reload();
+  schedulePush();
+}
+
+// ===== Task Actions =====
+async function toggleStatus(event, id) {
+  event.stopPropagation();
+  const task = flatTasks.find(t => t.id === id);
+  if (!task) return;
+  const cycle = { pending: 'in_progress', in_progress: 'completed', completed: 'pending', cancelled: 'pending' };
+  task.status = cycle[task.status] || 'pending';
+  if (task.status === 'completed') task.reminderTriggered = true;
+  await dbPut(task);
+  await reload();
+  schedulePush();
+}
+
+async function toggleCollapse(event, id) {
+  event.stopPropagation();
+  const task = flatTasks.find(t => t.id === id);
+  if (!task || !flatTasks.some(t => t.parentId === id)) return;
+  task.collapsed = !task.collapsed;
+  await dbPut(task);
+  await reload();
+  schedulePush();
+}
+
+function selectTask(id, event) {
+  if (event.target.closest('button') || event.target.closest('.checkbox') || event.target.closest('.expand-btn')) return;
+  selectedTaskId = selectedTaskId === id ? null : id;
+  renderAll();
+}
+
+async function startInlineEdit(id, event) {
+  event.stopPropagation();
+  const task = flatTasks.find(t => t.id === id);
+  if (!task) return;
+  const span = document.getElementById('title-' + id);
+  if (!span) return;
+  const current = span.textContent;
+  span.innerHTML = `<input type="text" value="${escapeHtml(current)}" style="width:100%;padding:2px 4px;border:2px solid var(--accent);border-radius:4px;font-size:14px;background:var(--surface)" id="inline-${id}">`;
+  const input = document.getElementById('inline-' + id);
+  input.focus(); input.select();
+  input.addEventListener('blur', async () => {
+    const val = input.value.trim();
+    if (val && val !== current) { task.title = val; await dbPut(task); schedulePush(); }
+    await reload();
+  });
+  input.addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') { input.value = current; input.blur(); }
+  });
+}
+
+async function deleteTask(id, event) {
+  if (event) event.stopPropagation();
+  const task = flatTasks.find(t => t.id === id);
+  if (!task) return;
+  const descendantCount = countDescendants({ children: buildTree(flatTasks, id) });
+  const msg = descendantCount > 0
+    ? `确定要删除"${task.title}"及其 ${descendantCount} 个子任务吗？此操作不可撤销。`
+    : `确定要删除"${task.title}"吗？`;
+  showConfirm(msg, async () => {
+    await dbDelete(id);
+    if (editingTaskId === id) closeDetail();
+    if (selectedTaskId === id) selectedTaskId = null;
+    await reload();
+    schedulePush();
+  });
+}
+
+// ===== Detail Panel =====
+function showDetail(id, event) {
+  if (event) event.stopPropagation();
+  const task = flatTasks.find(t => t.id === id);
+  if (!task) return;
+  editingTaskId = id;
+  pendingImages = [];
+  document.getElementById('detailTitle').value = task.title;
+  document.getElementById('detailDesc').value = task.description;
+  document.getElementById('detailStatus').value = task.status;
+  document.getElementById('detailPriority').value = task.priority;
+  document.getElementById('detailDueDate').value = task.dueDate ? task.dueDate.slice(0, 16) : '';
+  document.getElementById('detailReminderDate').value = task.reminderDate ? task.reminderDate.slice(0, 16) : '';
+  document.getElementById('detailReminderEnabled').checked = task.reminderEnabled;
+  document.getElementById('detailTags').value = (task.tags || []).join(', ');
+  document.getElementById('detailNotes').value = task.notes || '';
+  renderDetailImages();
+  document.getElementById('detailPanel').classList.add('show');
+  document.getElementById('overlay').classList.add('show');
+  // Setup drop zone
+  const dropZone = document.getElementById('imageDropZone');
+  dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); };
+  dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
+  dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove('drag-over'); addImages(e.dataTransfer.files); };
+  dropZone.onclick = () => document.getElementById('imageInput').click();
+  // Reset image input
+  document.getElementById('imageInput').value = '';
+}
+
+function closeDetail() {
+  editingTaskId = null;
+  pendingImages = [];
+  document.getElementById('detailPanel').classList.remove('show');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+async function saveDetail() {
+  if (!editingTaskId) return;
+  const task = flatTasks.find(t => t.id === editingTaskId);
+  if (!task) return;
+  task.title = document.getElementById('detailTitle').value.trim() || '未命名任务';
+  task.description = document.getElementById('detailDesc').value;
+  task.status = document.getElementById('detailStatus').value;
+  task.priority = parseInt(document.getElementById('detailPriority').value);
+  task.dueDate = document.getElementById('detailDueDate').value ? new Date(document.getElementById('detailDueDate').value).toISOString() : null;
+  const remDate = document.getElementById('detailReminderDate').value;
+  task.reminderDate = remDate ? new Date(remDate).toISOString() : null;
+  task.reminderEnabled = document.getElementById('detailReminderEnabled').checked;
+  if (task.reminderEnabled && remDate) task.reminderTriggered = false;
+  task.tags = document.getElementById('detailTags').value.split(',').map(s => s.trim()).filter(Boolean);
+  task.notes = document.getElementById('detailNotes').value;
+  // Merge pending images
+  if (pendingImages.length > 0) {
+    task.images = [...(task.images || []), ...pendingImages];
+    pendingImages = [];
+  }
+  await dbPut(task);
+  closeDetail();
+  await reload();
+  schedulePush();
+}
+
+async function deleteFromDetail() {
+  if (!editingTaskId) return;
+  const id = editingTaskId;
+  closeDetail();
+  await deleteTask(id);
+}
+
+// ===== Context Menu =====
+function showContextMenu(id, event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const menu = document.getElementById('contextMenu');
+  const task = flatTasks.find(t => t.id === id);
+  if (!task) return;
+  menu.innerHTML = `
+    <button onclick="TaskFlow.showAddForm('${id}');TaskFlow.hideContextMenu()">＋ 添加子任务</button>
+    <button onclick="TaskFlow.showDetail('${id}');TaskFlow.hideContextMenu()">✎ 编辑详情</button>
+    <button onclick="TaskFlow.toggleStatus(event, '${id}');TaskFlow.hideContextMenu()">↻ 切换状态</button>
+    <button onclick="TaskFlow.duplicateTask('${id}');TaskFlow.hideContextMenu()">📋 复制任务</button>
+    <div class="divider"></div>
+    <button onclick="TaskFlow.deleteTask('${id}');TaskFlow.hideContextMenu()" style="color:var(--danger)">🗑 删除任务</button>
+  `;
+  menu.style.left = event.clientX + 'px';
+  menu.style.top = event.clientY + 'px';
+  menu.classList.add('show');
+  selectedTaskId = id;
+  renderAll();
+}
+
+function hideContextMenu() { document.getElementById('contextMenu').classList.remove('show'); }
+
+async function duplicateTask(id) {
+  const task = flatTasks.find(t => t.id === id);
+  if (!task) return;
+  const copy = { ...task, id: crypto.randomUUID(), title: task.title + ' (副本)', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), reminderTriggered: false };
+  await dbPut(copy);
+  const children = flatTasks.filter(t => t.parentId === id);
+  for (const child of children) {
+    const childCopy = { ...child, id: crypto.randomUUID(), parentId: copy.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), reminderTriggered: false };
+    await dbPut(childCopy);
+  }
+  await reload();
+  schedulePush();
+}
+
+// ===== Confirm Dialog =====
+function showConfirm(msg, cb) {
+  document.getElementById('confirmMsg').textContent = msg;
+  document.getElementById('confirmDialog').classList.add('show');
+  confirmCallback = cb;
+  document.getElementById('confirmBtn').onclick = () => { closeConfirm(); cb(); };
+}
+
+function closeConfirm() {
+  document.getElementById('confirmDialog').classList.remove('show');
+  confirmCallback = null;
+}
+
+// ===== Search =====
+function onSearch(val) { searchQuery = val.trim(); renderAll(); }
+
+function searchByTag(tag) {
+  document.getElementById('searchInput').value = tag;
+  searchQuery = tag;
+  setView('all');
+  renderAll();
+}
+
+// ===== Views & Sort =====
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('.sidebar-item[data-view]').forEach(el => el.classList.remove('active'));
+  const el = document.querySelector(`.sidebar-item[data-view="${view}"]`);
+  if (el) el.classList.add('active');
+  renderAll();
+}
+
+function setSort(sort) { currentSort = sort; renderAll(); }
+
+// ===== Drag and Drop =====
+let dragId = null;
+function onDragStart(e, id) { dragId = id; e.target.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id); }
+function onDragOver(e, id) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (id !== dragId) { const row = document.querySelector(`[data-id="${id}"]`); if (row) row.closest('.task-row')?.classList.add('drag-over'); } }
+function onDragLeave(e) { e.target.closest('.task-row')?.classList.remove('drag-over'); }
+async function onDrop(e, targetId) {
+  e.preventDefault();
+  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+  if (!dragId || dragId === targetId) return;
+  const task = flatTasks.find(t => t.id === dragId);
+  const target = flatTasks.find(t => t.id === targetId);
+  if (!task || !target) return;
+  task.parentId = target.parentId;
+  task.sortOrder = target.sortOrder + 1;
+  if (e.ctrlKey) { task.parentId = targetId; }
+  await dbPut(task);
+  await reload();
+  schedulePush();
+}
+function onDragEnd(e) { e.target.classList.remove('dragging'); dragId = null; }
+
+// ===== Clock =====
+function updateClock() {
+  const now = new Date();
+  const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const dayName = days[now.getDay()];
+  const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+  let timeStr;
+  if (clock24h) {
+    timeStr = now.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } else {
+    timeStr = now.toLocaleTimeString('zh-CN', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  document.getElementById('clock').textContent = `${dayName}  ${dateStr}  ${timeStr}`;
+}
+
+function toggleClockFormat() { clock24h = !clock24h; updateClock(); }
+
+// ===== Reminders =====
+async function checkReminders() {
+  if (Notification.permission !== 'granted') return;
+  const now = new Date().toISOString();
+  const tasks = flatTasks.filter(t =>
+    t.reminderEnabled === true && t.reminderTriggered === false &&
+    t.reminderDate !== null && t.reminderDate <= now &&
+    t.status !== 'completed' && t.status !== 'cancelled'
+  );
+  for (const task of tasks) {
+    new Notification('⏰ 任务提醒', {
+      body: task.title,
+      tag: task.id,
+      requireInteraction: true,
+      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="0.9em" font-size="90">📋</text></svg>'
+    });
+    task.reminderTriggered = true;
+    await dbPut(task);
+  }
+  if (tasks.length > 0) { flatTasks = await dbGetAll(); renderAll(); }
+}
+
+async function requestPermission() {
+  if (Notification.permission === 'denied') {
+    alert('请在浏览器设置中允许此网站发送通知。\n\nChrome: 设置 → 隐私与安全 → 网站设置 → 通知\nEdge: 设置 → Cookie 和网站权限 → 通知');
+    return;
+  }
+  const result = await Notification.requestPermission();
+  document.getElementById('banner').classList.toggle('show', result !== 'granted');
+}
+
+// ===== Import / Export =====
+async function exportData() {
+  const blob = new Blob([JSON.stringify(flatTasks, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `taskflow-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importData(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!Array.isArray(data)) throw new Error('格式不正确');
+    showConfirm(`即将导入 ${data.length} 个任务。确认替换当前所有数据？`, async () => {
+      const existing = await dbGetAll();
+      await dbDeleteMany(existing.map(t => t.id));
+      for (const t of data) { t.id = t.id || crypto.randomUUID(); await dbPut(t); }
+      await reload();
+      schedulePush();
+    });
+  } catch (e) { alert('导入失败：文件格式不正确。'); }
+  document.getElementById('importFile').value = '';
+}
+
+// ===== Push Scheduling (debounced) =====
+let pushTimer = null;
+function schedulePush() {
+  if (!syncToken || !syncGistId) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushToCloud, 2000);
+}
+
+// ===== Reload =====
+async function reload() {
+  flatTasks = await dbGetAll();
+  renderAll();
+}
+
+// ===== Keyboard Shortcuts =====
+document.addEventListener('keydown', (e) => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    // Allow Escape in inputs
+    if (e.key === 'Escape') { e.target.blur(); }
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); document.getElementById('searchInput').focus(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'n') { e.preventDefault(); showAddForm(null); }
+  if (e.key === 'Escape') { hideContextMenu(); closeDetail(); cancelAdd(); closeLightbox(); document.getElementById('searchInput').blur(); }
+  if (e.key === 'Delete' && selectedTaskId) { deleteTask(selectedTaskId); }
+  if (e.key === ' ' && selectedTaskId) { e.preventDefault(); toggleStatus(e, selectedTaskId); }
+});
+
+// Paste image support
+document.addEventListener('paste', (e) => {
+  if (!editingTaskId) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  const files = [];
+  for (const item of items) {
+    if (item.type.startsWith('image/')) files.push(item.getAsFile());
+  }
+  if (files.length > 0) { e.preventDefault(); addImages(files); }
+});
+
+// Close context menu on click elsewhere
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.context-menu')) hideContextMenu();
+});
+
+// ===== Init =====
+async function init() {
+  await requestPermission();
+  document.getElementById('banner').classList.toggle('show', Notification.permission === 'denied');
+
+  await reload();
+  updateClock();
+  setInterval(updateClock, 1000);
+  await checkReminders();
+  setInterval(checkReminders, REMINDER_INTERVAL);
+
+  // Sync setup
+  if (syncToken && syncGistId) {
+    updateSyncUI('syncing', '连接中...');
+    await pullFromCloud();
+  } else {
+    updateSyncUI('offline', '离线');
+  }
+
+  // Periodic sync
+  setInterval(async () => {
+    if (syncToken && syncGistId) {
+      await pullFromCloud();
+    }
+  }, SYNC_INTERVAL);
+
+  // Missed reminders
+  setTimeout(async () => {
+    const now = new Date().toISOString();
+    const missed = flatTasks.filter(t =>
+      t.reminderEnabled === true && t.reminderTriggered === false &&
+      t.reminderDate && t.reminderDate < now &&
+      t.status !== 'completed' && t.status !== 'cancelled'
+    );
+    if (missed.length > 0 && Notification.permission === 'granted') {
+      for (const task of missed) {
+        new Notification('⏰ 错过的提醒', { body: task.title, tag: 'missed-' + task.id });
+        task.reminderTriggered = true;
+        await dbPut(task);
+      }
+      await reload();
+    }
+  }, 1000);
+
+  // Show setup wizard on first use if not configured
+  if (!syncToken) {
+    setTimeout(() => showSetup(), 1500);
+  }
+}
+
+// Auto-start
+init();
+
+return {
+  showAddForm, cancelAdd, addTask, toggleStatus, toggleCollapse,
+  selectTask, startInlineEdit, deleteTask, showDetail, closeDetail,
+  saveDetail, deleteFromDetail, showContextMenu, hideContextMenu,
+  duplicateTask, closeConfirm, onSearch, searchByTag, setView, setSort,
+  onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd,
+  toggleClockFormat, requestPermission, exportData, importData, reload,
+  showSetup, setupSync, skipSetup, addImages, removeImage, openLightbox, closeLightbox
+};
+})();
+</script>
+</body>
+</html>
