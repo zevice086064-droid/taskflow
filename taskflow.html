@@ -355,15 +355,23 @@ input,select,textarea{font:inherit;color:inherit}
   <div class="setup-dialog">
     <h2>☁️ 设置云同步</h2>
     <p class="step">选择一种同步方式，让电脑和手机数据保持一致</p>
-    <div class="setup-hint">
-      1. 前往 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a><br>
-      2. 点击 "Generate new token" → "Generate new token (classic)"<br>
-      3. 勾选 <b>gist</b> 权限，点击生成<br>
-      4. 复制生成的 Token 粘贴到下方
+    <div class="setup-tabs">
+      <div class="setup-tab active" data-sync="cloudFile" onclick="TaskFlow.switchSetupTab('cloudFile')">📁 云文件</div>
+      <div class="setup-tab" data-sync="gist" onclick="TaskFlow.switchSetupTab('gist')">🔧 Gist</div>
     </div>
-    <input type="password" id="setupToken" placeholder="粘贴 GitHub Token (ghp_...)">
-    <div class="setup-error" id="setupError"></div>
-    <button class="btn btn-primary" onclick="TaskFlow.setupSync()">连接并开始同步</button>
+    <div id="setupPanelCloudFile">
+      <div class="setup-hint">将任务数据文件放在 <b>OneDrive、iCloud 或 Dropbox</b> 云盘目录中。两端指向同一文件即可自动同步。<br><br><b>电脑端：</b>在云盘文件夹中选择或创建 <code>taskflow.json</code><br><b>手机端：</b>用浏览器打开同一云盘文件</div>
+      <div style="display:flex;gap:8px;margin-bottom:8px"><button class="btn btn-outline" onclick="TaskFlow.selectCloudFile()" style="flex:1">📂 选择/创建同步文件</button></div>
+      <div id="cloudFileStatus" style="font-size:12px;color:var(--text2);text-align:center;margin-bottom:8px"></div>
+      <div class="setup-error" id="setupErrorCloud"></div>
+      <button class="btn btn-primary" onclick="TaskFlow.skipSetup()">开始使用</button>
+    </div>
+    <div id="setupPanelGist" style="display:none">
+      <div class="setup-hint">1. 前往 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a><br>2. 点击 Generate new token (classic)<br>3. 勾选 <b>gist</b> 权限，点击生成<br>4. 复制 Token 粘贴到下方</div>
+      <input type="password" id="setupToken" placeholder="粘贴 GitHub Token (ghp_...)">
+      <div class="setup-error" id="setupErrorGist"></div>
+      <button class="btn btn-primary" onclick="TaskFlow.setupGistSync()">连接并开始同步</button>
+    </div>
     <div class="setup-skip" onclick="TaskFlow.skipSetup()">跳过，仅使用本地存储</div>
   </div>
 </div>
