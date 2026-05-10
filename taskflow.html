@@ -367,8 +367,9 @@ input,select,textarea{font:inherit;color:inherit}
       <button class="btn btn-primary" onclick="TaskFlow.skipSetup()">开始使用</button>
     </div>
     <div id="setupPanelGist" style="display:none">
-      <div class="setup-hint">1. 前往 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a><br>2. 点击 Generate new token (classic)<br>3. 勾选 <b>gist</b> 权限，点击生成<br>4. 复制 Token 粘贴到下方</div>
+      <div class="setup-hint">1. 前往 <a href="https://github.com/settings/tokens" target="_blank">github.com/settings/tokens</a><br>2. 点击 Generate new token (classic)<br>3. 勾选 <b>gist</b> 权限，点击生成<br>4. 复制 Token 粘贴到下方<br><br>📌 <b>多设备同步提示：</b>第一台设备配置好后，记下 Gist ID，其他设备填入相同 ID 即可共享</div>
       <input type="password" id="setupToken" placeholder="粘贴 GitHub Token (ghp_...)">
+      <input type="text" id="setupGistId" placeholder="Gist ID（可选，留空则自动查找或创建）" style="font-size:12px;font-family:monospace">
       <div class="setup-error" id="setupErrorGist"></div>
       <button class="btn btn-primary" onclick="TaskFlow.setupGistSync()">连接并开始同步</button>
     </div>
@@ -803,6 +804,7 @@ function switchSetupTab(tab) {
 
 function showSetup() {
   document.getElementById('setupToken').value = syncToken;
+  document.getElementById('setupGistId').value = syncGistId;
   document.getElementById('setupErrorGist').textContent = '';
   document.getElementById('setupErrorCloud').textContent = '';
   document.getElementById('cloudFileStatus').textContent = cloudFileHandle ? '✅ 已连接: ' + cloudFileHandle.name : '';
@@ -814,6 +816,7 @@ function skipSetup() { document.getElementById('setupOverlay').classList.remove(
 
 async function setupGistSync() {
   const token = document.getElementById('setupToken').value.trim();
+  const manualGistId = document.getElementById('setupGistId').value.trim();
   const errEl = document.getElementById('setupErrorGist');
   errEl.textContent = '';
   if (!token) { errEl.textContent = '请输入 GitHub Token'; return; }
@@ -824,29 +827,39 @@ async function setupGistSync() {
   localStorage.setItem('tf_sync_token', token);
   updateSyncUI('syncing', '正在连接...');
   try {
-    // Search for existing TaskFlow gist first (so both devices share the same gist)
-    let foundGistId = null;
-    let page = 1;
-    while (!foundGistId && page <= 5) {
-      const listResp = await fetch(`${GIST_API}?per_page=100&page=${page}`, {
+    if (manualGistId) {
+      // Use manually entered Gist ID
+      const resp = await fetch(`${GIST_API}/${manualGistId}`, {
         headers: { 'Authorization': `token ${syncToken}`, 'Accept': 'application/vnd.github.v3+json' }
       });
-      if (!listResp.ok) break;
-      const gists = await listResp.json();
-      if (gists.length === 0) break;
-      for (const g of gists) {
-        if (g.description === 'TaskFlow 任务数据 - 请勿手动修改' && g.files && g.files['tasks.json']) {
-          foundGistId = g.id;
-          break;
-        }
-      }
-      page++;
-    }
-    if (foundGistId) {
-      syncGistId = foundGistId;
-      localStorage.setItem('tf_sync_gist_id', foundGistId);
+      if (!resp.ok) throw new Error('Gist ID 无效或无权访问 (HTTP ' + resp.status + ')');
+      syncGistId = manualGistId;
+      localStorage.setItem('tf_sync_gist_id', manualGistId);
     } else {
-      await createGist();
+      // Search for existing TaskFlow gist
+      let foundGistId = null;
+      let page = 1;
+      while (!foundGistId && page <= 5) {
+        const listResp = await fetch(`${GIST_API}?per_page=100&page=${page}`, {
+          headers: { 'Authorization': `token ${syncToken}`, 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (!listResp.ok) break;
+        const gists = await listResp.json();
+        if (gists.length === 0) break;
+        for (const g of gists) {
+          if (g.description === 'TaskFlow 任务数据 - 请勿手动修改' && g.files && g.files['tasks.json']) {
+            foundGistId = g.id;
+            break;
+          }
+        }
+        page++;
+      }
+      if (foundGistId) {
+        syncGistId = foundGistId;
+        localStorage.setItem('tf_sync_gist_id', foundGistId);
+      } else {
+        await createGist();
+      }
     }
     syncMode = 'gist';
     localStorage.setItem('tf_sync_mode', 'gist');
